@@ -1,91 +1,65 @@
-const { rejects } = require('assert');
-const fs = require('fs');
-const { resolve } = require('path');
-const initSqlJs = require('sql.js');
+const mysql = require('mysql2/promise');
 
-//* create USER / SIGNUP / REGISTER
-function createUser(uuid, fName, lName, email, password, uri) {
-  return new Promise((res, rej) => {
-    initSqlJs().then(function (SQL) {
-      //! read the database to the JS memory
-      const filebuffer = fs.readFileSync('database.sqlite');
-      const db = new SQL.Database(filebuffer);
-
-      //? query and operation logic
-      let query = db.prepare(
-        'insert into users values($uuid, $fName, $lName, $email, $password, $uri)'
-      );
-
-      let result = query.getAsObject({
-        $uuid: uuid,
-        $fName: fName,
-        $lName: lName,
-        $email: email,
-        $password: password,
-        $uri: uri,
-      });
-      console.log(result);
-
-      //! write the database file back to storage from JS memory
-      var data = db.export();
-      var buffer = new Buffer.from(data);
-      fs.writeFileSync('database.sqlite', buffer);
-
-      //? function return and free memory
-      query.free;
-
-      if (result.uuid) {
-        return res(result);
-      } else {
-        return res({});
-      }
-    });
-  });
-}
-
-function login(email, password) {
-  return new Promise((res, rej) => {
-    initSqlJs().then(function (SQL) {
-      //! read the database to the JS memory
-      const filebuffer = fs.readFileSync('database.sqlite');
-      const db = new SQL.Database(filebuffer);
-
-      //? query and operation logic
-      let query = db.prepare('SELECT * FROM USERS WHERE email = $email ;');
-
-      let result = query.getAsObject({
-        $email: email,
-      });
-
-      //! write the database file back to storage from JS memory
-      var data = db.export();
-      var buffer = new Buffer.from(data);
-      fs.writeFileSync('database.sqlite', buffer);
-
-      //? function return and free memory
-      query.free;
-
-      if (result.uuid) {
-        return res(result);
-      } else {
-        return res({});
-      }
-    });
-  });
-}
-
-// insertUsers(
-//   'ase',
-//   'beeb',
-//   'buu',
-//   'muni@gmail.com',
-//   'asdfasdf',
-//   'uri of profile'
-// ).then((resolve) => console.log(resolve));
-
-login('rabeehwork@gmail.com', 'asdfasdf').then((res, rej) => {
-  if (rej) {
-    console.log(rej);
-  }
-  console.log(res);
+// Create a connection pool for MySQL
+const pool = mysql.createPool({
+  host: 'localhost', // Replace with your MySQL host
+  user: 'root', // Replace with your MySQL username
+  password: '9I1Gghe0', // Replace with your MySQL password
+  database: 'stockDBMS', // Replace with your MySQL database name
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
+
+// Function to create a user (signup/register)
+async function createUser(uuid, fName, lName, email, password, uri) {
+  try {
+    // Prepare and execute the insert query for creating a user
+    const [result] = await pool.query(
+      'INSERT INTO users (uuid, first_name, last_name, email, password, dp_uri) VALUES (?, ?, ?, ?, ?, ?)',
+      [uuid, fName, lName, email, password, uri]
+    );
+
+    // If insertion is successful, return the result
+    if (result.affectedRows > 0) {
+      return { uuid, fName, lName, email, uri };
+    } else {
+      return {}; // Return empty object if the operation fails
+    }
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
+  }
+}
+
+// Function to login a user (validate credentials)
+async function login(email, password) {
+  try {
+    // Query the user data from the database
+    const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+
+    if (rows.length > 0) {
+      // Check if the email exists and match the password
+      const user = rows[0]; // Assuming email is unique
+      if (user.password === password) {
+        return user; // Return user data if login is successful
+      } else {
+        return {}; // Return empty object if password does not match
+      }
+    } else {
+      return {}; // Return empty object if no user is found
+    }
+  } catch (error) {
+    console.error('Error logging in:', error);
+    throw error;
+  }
+}
+
+// Example usage
+createUser('unique-uuid', 'John', 'Doe', 'john.doe@example.com', 'securepassword', 'profile-uri')
+  .then(user => console.log('User created:', user))
+  .catch(err => console.log('Error:', err));
+
+login('john.doe@example.com', 'securepassword')
+  .then(user => console.log('Login successful:', user))
+  .catch(err => console.log('Error:', err));
