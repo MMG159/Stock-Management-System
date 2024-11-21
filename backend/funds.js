@@ -1,68 +1,74 @@
-const fs = require('fs');
-const initSqlJs = require('sql.js');
+const mysql = require('mysql2/promise');
 const shortUuid = require('short-uuid');
-var DateTime = require('datetime-js');
+const DateTime = require('datetime-js');
 
+// Create a connection pool for MySQL
+const pool = mysql.createPool({
+  host: 'localhost', // Replace with your MySQL host
+  user: 'root', // Replace with your MySQL username
+  password: '9I1Gghe0', // Replace with your MySQL password
+  database: 'stockDBMS', // Replace with your MySQL database name
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
+
+// Get the current date and time in the desired format
 const dateObj = new Date();
-const todayDate = DateTime(dateObj, '%d-%m-%Y');
+const todayDate = DateTime(dateObj, '%Y-%m-%d %H:%M:%S');
 
-const fundTransaction = (uuid, type, amount) => {
-  return new Promise((res, rej) => {
-    initSqlJs().then(function (SQL) {
-      //! read the database to the JS memory
-      const filebuffer = fs.readFileSync('./backend/database.sqlite'); // location relative to the root file where the application runs
-      const db = new SQL.Database(filebuffer);
-      const uniqueId = shortUuid.generate();
+// Function to execute a transaction order
+const executeOrder = async (uuid, symbol, qty, price, order_type) => {
+  try {
+    const uniqueId = shortUuid.generate();
 
-      let query = db.run(
-        'INSERT INTO FUND_TRANSACTIONS values($tuid, $uuid, $type, $amount, $date)',
-        {
-          $tuid: uniqueId,
-          $uuid: uuid,
-          $type: type,
-          $amount: amount,
-          $date: todayDate,
-        }
-      );
+    // Insert the transaction into the TRANSACTIONS table
+    const [result] = await pool.query(
+      'INSERT INTO TRANSACTIONS (tuid, uuid, symbol, order_type, date, qty, price) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [uniqueId, uuid, symbol, order_type, todayDate, qty, price]
+    );
 
-      //! write the database file back to storage from JS memory
-      var data = db.export();
-      var buffer = new Buffer.from(data);
-      fs.writeFileSync('./backend/database.sqlite', buffer);
-
-      return res({
-        status: 200,
-        message: 'Fund Transactions Successful.',
-        id: uniqueId,
-      });
-    });
-  });
+    return {
+      status: 200,
+      message: 'Order Executed.',
+      id: uniqueId
+    };
+  } catch (error) {
+    console.error('Error executing order:', error);
+    throw error;
+  }
 };
 
-const fundTransactionHistory = (uuid) => {
-  return new Promise((res, rej) => {
-    initSqlJs().then(function (SQL) {
-      //! read the database to the JS memory
-      const filebuffer = fs.readFileSync('./backend/database.sqlite'); // location relative to the root file where the application runs
-      const db = new SQL.Database(filebuffer);
-      var transactions = [];
+// Function to get all transactions for a user on a specific symbol
+const transactionsOnComp = async (uuid, symbol) => {
+  try {
+    // Query for transactions on a particular symbol for a user
+    const [transactions] = await pool.query(
+      'SELECT * FROM TRANSACTIONS WHERE uuid = ? AND symbol = ?',
+      [uuid, symbol]
+    );
 
-      var stmt = db.prepare(
-        'SELECT * FROM FUND_TRANSACTIONS WHERE uuid = $uuid;',
-        { $uuid: uuid }
-      );
-      while (stmt.step()) {
-        var row = stmt.getAsObject();
-        transactions.push(row);
-      }
-
-      //! write the database file back to storage from JS memory
-      var data = db.export();
-      var buffer = new Buffer.from(data);
-      fs.writeFileSync('./backend/database.sqlite', buffer);
-      return res(transactions);
-    });
-  });
+    return transactions;
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    throw error;
+  }
 };
 
-module.exports = { fundTransaction, fundTransactionHistory };
+// Function to get all transactions for a user
+const allTransactions = async (uuid) => {
+  try {
+    // Query for all transactions for a user
+    const [transactions] = await pool.query(
+      'SELECT * FROM TRANSACTIONS WHERE uuid = ?',
+      [uuid]
+    );
+
+    return transactions;
+  } catch (error) {
+    console.error('Error fetching all transactions:', error);
+    throw error;
+  }
+};
+
+module.exports = { executeOrder, transactionsOnComp, allTransactions };
